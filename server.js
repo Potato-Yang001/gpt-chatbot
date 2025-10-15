@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios'; // axois is a library to make HTTP requests for different types of APIs 
+import data from './data.js';
 
 dotenv.config(); // Now all environment variables are accessible from process.env
 
@@ -20,6 +21,7 @@ app.listen(PORT, () => {
 app.post('/api/generate', async (req, res) => {
     const { prompt } = req.body; // Extract the prompt from the request body
     // const prompt = req.body.prompt; -> Alternative way to extract the prompt 
+
     if (!prompt) { // If no prompt is provided, return an error
         return res.status(400).json({ error: 'Prompt is required' });
     }
@@ -28,15 +30,34 @@ app.post('/api/generate', async (req, res) => {
         return res.status(400).json({ error: 'Prompt is too long. Maximum length is 300 characters.' });
     }
 
+    const keywords = prompt.toLowerCase().split(" ")
+
+    let systemPrompts = data.filter((item) =>
+        item.tags?.split(" ") // Split the tags string into an array of individual tags
+            .some((tag) => keywords.includes(tag))  // Check if any tag matches a keyword from the prompt
+            .map((item) => item.content)) // filter through the data array to find relevant information based on keywords in the prompt
+
+    const chattInformation = data.find((item) => item.name === "Chatbot Information")
+    const chatbotInfo = chattInformation ? chattInformation.content : "";
+
+    if (chatbotInfo) {
+        systemPrompts.unshift(chatbotInfo)
+    }
+
+    if (systemPrompts.length === 1 && chatbotInfo) {
+        systemPrompts = data.map((item) => item.content)
+    }
+
     try {
         const response = await axios.post('https://api.openai.com/v1/chat/completions',
             { // Make a POST request to the OpenAI API
                 model: "gpt-4", // Specify the model to use
                 messages: [
                     { role: "system", content: "You are Sigmund, a programming chatbot created by [ENTER YOUR NAME HERE], designed to answer only Sigma School or tech-related questions. Sigma School, based in Puchong, Selangor, Malaysia, offers Software Development bootcamps: online self-paced (RM9997), online full-time (RM14997, 3 months), and offline full-time (RM24997, 3 months), with monthly payment options. They provide a money-back guarantee if graduates fail to secure a job. The course includes 4 modules, 64 lessons, 100+ challenges, 10+ assessments, and 25 projects, emphasizing deconstructing and recreating clone projects. Accommodation assistance is also available." },
+                    ...systemPrompts.map((content) => ({ role: 'system', content })),
                     { role: "user", content: prompt } // Send the user's prompt as a message
                 ],
-                max_tokens: 10, // Limit the response to 10 tokens
+                max_tokens: 500, // Limit the response to 10 tokens
             }, {
             headers:
             {
